@@ -1,0 +1,15 @@
+/.idea/
+/.vscode/
+/cairo_venv/
+/ether_kit-master/
+/venv/
+/*.egg-info/
+__pycache__/
+build/
+*.json
+/.env
+*~
+/build/
+/interfaces/
+/reports/
+/scripts/
