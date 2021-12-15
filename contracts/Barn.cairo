@@ -1,12 +1,12 @@
 %lang starknet
-%builtins pedersen range_check div
+%builtins pedersen range_check ecdsa
 
-from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.hash import hash2
+from starkware.cairo.common.alloc import alloc
 from starkware.cairo.common.cairo_builtins import (HashBuiltin, SignatureBuiltin)
 from starkware.cairo.common.signature import verify_ecdsa_signature
-from starkware.cairo.common.math import assert_le
-
+from starkware.cairo.common.math import (assert_le, assert_not_zero, unsigned_div_rem, split_felt)
+from starkware.cairo.common.math_cmp import is_le_felt
 
 struct SheepWolf:
     member isSheep    : felt  
@@ -65,6 +65,11 @@ end
 # total alpha scores staked
 @storage_var
 func totalAlphaStaked() -> (_totalAlphaStaked : felt):
+end
+
+# any rewards distributed when no wolves are staked
+@storage_var
+func unaccountedRewards() -> (_unaccountedRewards : felt):
 end
 
 # number of Sheep staked in the Barn
@@ -127,7 +132,6 @@ func register_contract{
 
     #check if contract exists already
     let (stake) = barn.read(tokenId=tokenId)
-    assert stake.tokenId = 0
     assert stake.value = 0
     assert stake.owner = 0
 
@@ -160,7 +164,8 @@ func claim_sheep_from_barn{
     range_check_ptr}(
     tokenId : felt,
     staked : felt,
-    user : felt): 
+    user : felt):
+
     alloc_locals 
     local owed
 
@@ -171,34 +176,69 @@ func claim_sheep_from_barn{
     assert_not_zero(stake.owner)
     assert_not_zero(stake.value)
 
-    #sheep need tobe in barn at least 2 days
-    assert_le(1, (time2 - stake.value - MINIMUM_TO_EXIT) * staked)
+    #sheep need to be in barn at least 2 days
+    if staked == 1:
+        assert_le(1, time2 - stake.value - MINIMUM_TO_EXIT)
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    else:
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    end
 
     let (_totalWoolEarned) = totalWoolEarned.read()
-    if _totalWoolEarned < MAXIMUM_GLOBAL_WOOL:
-        let(q,r) = div((time2 - stake.value) * DAILY_WOOL_RATE, day)
+    let (check_lt) = is_le_felt(_totalWoolEarned, MAXIMUM_GLOBAL_WOOL)
+    if check_lt == 1:
+        let(q,r) = unsigned_div_rem((time2 - stake.value) * DAILY_WOOL_RATE, day)
         owed = q
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
     else:
-        if stake.value > lastClaimTimestamp:
+        let (check_lt) = is_le_felt(lastClaimTimestamp, stake.value)
+        if check_lt == 1:
             owed = 0
+            tempvar range_check_ptr = range_check_ptr
+            tempvar syscall_ptr = syscall_ptr
+            tempvar pedersen_ptr = pedersen_ptr
         else:
-            let(q,r) = div((lastClaimTimestamp - stake.value) * DAILY_WOOL_RATE, day)
+            let(q,r) = unsigned_div_rem((lastClaimTimestamp - stake.value) * DAILY_WOOL_RATE, day)
             owed = q
+            tempvar range_check_ptr = range_check_ptr
+            tempvar syscall_ptr = syscall_ptr
+            tempvar pedersen_ptr = pedersen_ptr
         end
-    end 
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    end
+    tempvar range_check_ptr = range_check_ptr
+    tempvar syscall_ptr = syscall_ptr
+    tempvar pedersen_ptr = pedersen_ptr
 
     if staked == 0:
-        let inputs : felt* = alloc()
-        inputs[0] = tokenId
-        inputs[1] = time2
-        inputs[2] = user
-        inputs[3] = stake.value
-        inputs[4] = stake.owner
+        let (inputs : felt*) = alloc()
+        assert inputs[0] = tokenId
+        assert inputs[1] = time2
+        assert inputs[2] = user
+        assert inputs[3] = stake.value
+        assert inputs[4] = stake.owner
         let (random) = random_number(5, inputs)
-        let (q, r) = div(random, 2)
+        let (q, r) = unsigned_div_rem(random, 2)
         if r == 0:
             payWolfTax(owed * 100)
-            owed = 0
+
+            # TODO: set owed amount for user (write storage variable) = 0
+
+            tempvar range_check_ptr = range_check_ptr
+            tempvar syscall_ptr = syscall_ptr
+            tempvar pedersen_ptr = pedersen_ptr
+        else:
+            tempvar range_check_ptr = range_check_ptr
+            tempvar syscall_ptr = syscall_ptr
+            tempvar pedersen_ptr = pedersen_ptr
         end
         # TODODODO
         # let (payload : felt*) = alloc()
@@ -212,29 +252,71 @@ func claim_sheep_from_barn{
         #     payload=payload)
         
         # delete sheep from barn
-        barn.write(tokenId, Stake(value=0, owner=0, traits=0))
+        barn.write(tokenId, Stake(value=0, owner=0, traits=SheepWolf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res - 1)
-
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
     else:
-        let (q, r) = div(owed * WOOL_CLAIM_TAX_PERCENTAGE, 100)
+        let (q, r) = unsigned_div_rem(owed * WOOL_CLAIM_TAX_PERCENTAGE, 100)
         payWolfTax(q)
-        owed = owed - q
-        barn.write(tokenId, Stake(value=time2, owner=stake.owner, traits=stake.tokenTraits))
-    end
 
+        # TODO: set owed amount for user (write storage variable) = owed - q
+
+        barn.write(tokenId, Stake(value=time2, owner=stake.owner, traits=stake.traits))
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    end
 
     return ()
 end
 
+func payWolfTax{
+    syscall_ptr : felt*,
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr}(
+    amount : felt):
+
+    let (_totalAlphaStaked) = totalAlphaStaked.read()
+    let (_unaccountedRewards) = unaccountedRewards.read()
+    # if there's no staked wolves
+    if _totalAlphaStaked == 0:
+        # keep track of $WOOL due to wolves
+        unaccountedRewards.write(_unaccountedRewards + amount)
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    else:
+        # makes sure to include any unaccounted $WOOL
+        let (_woolPerAlpha) = woolPerAlpha.read()
+        let (q, r) = unsigned_div_rem(amount + _unaccountedRewards, _totalAlphaStaked)
+        woolPerAlpha.write(_woolPerAlpha + q)
+        unaccountedRewards.write(r)
+        tempvar range_check_ptr = range_check_ptr
+        tempvar syscall_ptr = syscall_ptr
+        tempvar pedersen_ptr = pedersen_ptr
+    end
+
+    return ()
+end
 
 func random_number{
-    pedersen_ptr : HashBuiltin*}(
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr}(
     n : felt, inputs : felt*) -> (
     result : felt):
+
+    if n == 1:
+        let (res) = hash2{hash_ptr=pedersen_ptr}(inputs[0], 0)
+        return (result=res)
+    end
 
     let (res) = random_number(n - 1, inputs + 1)
     let (res) = hash2{hash_ptr=pedersen_ptr}(inputs[0], res)
 
-    return (result=res)
+    # Avoid too large random number for division
+    let (left, right) = split_felt(res)
+    return (result=right)
 end
