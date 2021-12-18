@@ -27,14 +27,12 @@ struct Stake:
     member traits  : SheepWolf
 end
 
+# miliseconds
+const day = 86400000 
 
-const time1 = 1
-const time2 = 100
-const day = 24
-const lastClaimTimestamp = 20
-const MINIMUM_TO_EXIT = 50
+const MINIMUM_TO_EXIT = day * 2
 const MAXIMUM_GLOBAL_WOOL = 2000
-const DAILY_WOOL_RATE = 10000
+const DAILY_WOOL_RATE = 100
 const WOOL_CLAIM_TAX_PERCENTAGE = 20
 
 # maps tokenId to stake 
@@ -82,6 +80,17 @@ end
 func totalWoolEarned() -> (_totalWoolEarned : felt):
 end
 
+# the last time $WOOL was claimed
+@storage_var
+func lastClaimTimestamp() -> (_lastClaimTimestamp : felt):
+end
+
+# stores each user's $WOOL balance
+@storage_var
+func userBalance(user : felt) -> (_userBalance : felt):
+end
+
+
 #TODO constructor
 
 @view
@@ -116,7 +125,23 @@ func get_pack{
     return (res)
 end
 
+@view
+func get_totalWoolEarned{
+        syscall_ptr : felt*, pedersen_ptr : HashBuiltin*,
+        range_check_ptr}() -> (res : felt):
+    let (res) = totalWoolEarned.read()
+    return (res)
+end
 
+@view
+func get_lastClaimTimestamp{
+        syscall_ptr : felt*, pedersen_ptr : HashBuiltin*,
+        range_check_ptr}() -> (res : felt):
+    let (res) = lastClaimTimestamp.read()
+    return (res)
+end
+
+#handler?
 @external
 func register_contract{
     syscall_ptr : felt*,
@@ -125,7 +150,8 @@ func register_contract{
     from_address : felt,
     tokenId : felt,
     tokenTraits : SheepWolf,
-    owner : felt):
+    owner : felt,
+    time : felt):
 
     #check from_addres
     #assert from_address = L1_CONTRACT_ADDRESS
@@ -138,8 +164,7 @@ func register_contract{
 
     #write contract
     if tokenTraits.isSheep == 1:
-        #TODO fix value to block timestamp
-        barn.write(tokenId, Stake(value=time1, owner=owner, traits=tokenTraits))
+        barn.write(tokenId, Stake(value=time, owner=owner, traits=tokenTraits))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res + 1)
     else:
@@ -156,6 +181,11 @@ func register_contract{
     return ()
 end
 
+
+
+# realize $WOOL earnings for a single Sheep and optionally unstake it
+# if not unstaking, pay a 20% tax to the staked Wolves
+# if unstaking, there is a 50% chance all $WOOL is stolen
 @external
 func claim_sheep_from_barn{
     syscall_ptr : felt*,
@@ -164,115 +194,45 @@ func claim_sheep_from_barn{
     range_check_ptr}(
     tokenId : felt,
     staked : felt,
-    user : felt):
-
-    alloc_locals 
-    local owed
+    user : felt,
+    time : felt,
+    stake : Stake,
+    owed : felt,
+    tax : felt
+    ):
 
     #TODO signature
 
     #check if sheep in barn
-    let (stake) = barn.read(tokenId=tokenId)
     assert_not_zero(stake.owner)
     assert_not_zero(stake.value)
 
     #sheep need to be in barn at least 2 days
-    if staked == 1:
-        assert_le(1, time2 - stake.value - MINIMUM_TO_EXIT)
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
-    else:
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
-    end
+    # assert_le((time - stake.value - MINIMUM_TO_EXIT) * staked, 0)
 
-    let (_totalWoolEarned) = totalWoolEarned.read()
-    let (check_lt) = is_le_felt(_totalWoolEarned, MAXIMUM_GLOBAL_WOOL)
-    if check_lt == 1:
-        let(q,r) = unsigned_div_rem((time2 - stake.value) * DAILY_WOOL_RATE, day)
-        owed = q
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
-    else:
-        let (check_lt) = is_le_felt(lastClaimTimestamp, stake.value)
-        if check_lt == 1:
-            owed = 0
-            tempvar range_check_ptr = range_check_ptr
-            tempvar syscall_ptr = syscall_ptr
-            tempvar pedersen_ptr = pedersen_ptr
-        else:
-            let(q,r) = unsigned_div_rem((lastClaimTimestamp - stake.value) * DAILY_WOOL_RATE, day)
-            owed = q
-            tempvar range_check_ptr = range_check_ptr
-            tempvar syscall_ptr = syscall_ptr
-            tempvar pedersen_ptr = pedersen_ptr
-        end
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
-    end
-    tempvar range_check_ptr = range_check_ptr
-    tempvar syscall_ptr = syscall_ptr
-    tempvar pedersen_ptr = pedersen_ptr
+    # add owed amount to user's wallet
+    let (_userBalance) = userBalance.read(user)
+    userBalance.write(user, owed)
+    
+    payWolfTax(tax)
 
     if staked == 0:
-        let (inputs : felt*) = alloc()
-        assert inputs[0] = tokenId
-        assert inputs[1] = time2
-        assert inputs[2] = user
-        assert inputs[3] = stake.value
-        assert inputs[4] = stake.owner
-        let (random) = random_number(5, inputs)
-        let (q, r) = unsigned_div_rem(random, 2)
-        if r == 0:
-            payWolfTax(owed * 100)
-
-            # TODO: set owed amount for user (write storage variable) = 0
-
-            tempvar range_check_ptr = range_check_ptr
-            tempvar syscall_ptr = syscall_ptr
-            tempvar pedersen_ptr = pedersen_ptr
-        else:
-            tempvar range_check_ptr = range_check_ptr
-            tempvar syscall_ptr = syscall_ptr
-            tempvar pedersen_ptr = pedersen_ptr
-        end
-        # TODODODO
-        # let (payload : felt*) = alloc()
-        # assert payload[0] = WITHDRAW
-        # assert payload[1] = address
-        # assert payload[2] = amountOrId
-        # assert payload[3] = contract
-        # send_message_to_l1(
-        #     to_address=L1_CONTRACT_ADDRESS,
-        #     payload_size=4,
-        #     payload=payload)
+        # TODODODO send mesage to L1
         
         # delete sheep from barn
         barn.write(tokenId, Stake(value=0, owner=0, traits=SheepWolf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res - 1)
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
+
     else:
-        let (q, r) = unsigned_div_rem(owed * WOOL_CLAIM_TAX_PERCENTAGE, 100)
-        payWolfTax(q)
-
-        # TODO: set owed amount for user (write storage variable) = owed - q
-
-        barn.write(tokenId, Stake(value=time2, owner=stake.owner, traits=stake.traits))
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
+        # reset sheep's value to current timestamp
+        barn.write(tokenId, Stake(value=time, owner=stake.owner, traits=stake.traits))
     end
 
     return ()
 end
 
+# add $WOOL to claimable pot for the Pack
 func payWolfTax{
     syscall_ptr : felt*,
     pedersen_ptr : HashBuiltin*,
@@ -285,38 +245,13 @@ func payWolfTax{
     if _totalAlphaStaked == 0:
         # keep track of $WOOL due to wolves
         unaccountedRewards.write(_unaccountedRewards + amount)
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
     else:
         # makes sure to include any unaccounted $WOOL
         let (_woolPerAlpha) = woolPerAlpha.read()
         let (q, r) = unsigned_div_rem(amount + _unaccountedRewards, _totalAlphaStaked)
         woolPerAlpha.write(_woolPerAlpha + q)
         unaccountedRewards.write(r)
-        tempvar range_check_ptr = range_check_ptr
-        tempvar syscall_ptr = syscall_ptr
-        tempvar pedersen_ptr = pedersen_ptr
     end
 
     return ()
-end
-
-func random_number{
-    pedersen_ptr : HashBuiltin*,
-    range_check_ptr}(
-    n : felt, inputs : felt*) -> (
-    result : felt):
-
-    if n == 1:
-        let (res) = hash2{hash_ptr=pedersen_ptr}(inputs[0], 0)
-        return (result=res)
-    end
-
-    let (res) = random_number(n - 1, inputs + 1)
-    let (res) = hash2{hash_ptr=pedersen_ptr}(inputs[0], res)
-
-    # Avoid too large random number for division
-    let (left, right) = split_felt(res)
-    return (result=right)
 end
