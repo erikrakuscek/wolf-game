@@ -36,9 +36,7 @@ async def test_register_contract():
     sw = (1, 200, 100, 150, 166, 15, 10, 8, 10, 5)
     await contract.register_contract(from_address=10101, tokenId=1, tokenTraits=sw, owner=4343, time=current_milli_time()).invoke()
     # Check results.
-    execution_info = await contract.get_stake(tokenId=1).call()
-    print(execution_info.result)
-    execution_info = await contract.get_totalAlphaStaked().call()
+    execution_info = await contract.get_barn(tokenId=1).call()
     print(execution_info.result)
     execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
@@ -47,9 +45,7 @@ async def test_register_contract():
     # Register new contract.
     await contract.register_contract(from_address=122221, tokenId=2, tokenTraits=sw, owner=23232, time=current_milli_time()).invoke()
     # Check results.
-    execution_info = await contract.get_stake(tokenId=2).call()
-    print(execution_info.result)
-    execution_info = await contract.get_totalAlphaStaked().call()
+    execution_info = await contract.get_barn(tokenId=2).call()
     print(execution_info.result)
     execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
@@ -58,21 +54,17 @@ async def test_register_contract():
     sw = (0, 200, 100, 150, 166, 15, 10, 8, 10, 5)
     await contract.register_contract(from_address=45454, tokenId=3, tokenTraits=sw, owner=23232, time=current_milli_time()).invoke()
     # Check results.
-    execution_info = await contract.get_pack(alpha=5, index=0).call()
+    execution_info = await contract.get_pack(tokenId=3).call()
     print(execution_info.result)
     execution_info = await contract.get_totalAlphaStaked().call()
-    print(execution_info.result)
-    execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
 
     # Register new contract.
     await contract.register_contract(from_address=1112222, tokenId=4, tokenTraits=sw, owner=1212, time=current_milli_time()).invoke()
     # Check results.
-    execution_info = await contract.get_pack(alpha=5, index=1).call()
+    execution_info = await contract.get_pack(tokenId=4).call()
     print(execution_info.result)
     execution_info = await contract.get_totalAlphaStaked().call()
-    print(execution_info.result)
-    execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
 
 
@@ -82,7 +74,7 @@ async def test_claim_sheep_from_barn():
 
     time = current_milli_time()
     totalWoolEarned = (await contract.get_totalWoolEarned().call()).result.res
-    stake = (await contract.get_stake(tokenId=1).call()).result.res
+    stake = (await contract.get_barn(tokenId=1).call()).result.res
     lastClaimTimestamp = (await contract.get_lastClaimTimestamp().call()).result.res
     owed = 0
     tax = 0
@@ -108,19 +100,43 @@ async def test_claim_sheep_from_barn():
         owed -= tax 
             
 
-    await contract.claim_sheep_from_barn(tokenId=1, staked=1, user=123, 
+    await contract.claim_sheep_from_barn(unstake=0, user=123, 
                 time=time, stake=stake, owed=owed, tax=tax).invoke()
 
-    execution_info = await contract.get_stake(tokenId=1).call()
+    execution_info = await contract.get_barn(tokenId=1).call()
     print(execution_info.result)
     execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
     
-    await contract.claim_sheep_from_barn(tokenId=2, staked=0, user=123, 
+    await contract.claim_sheep_from_barn(unstake=1, user=123, 
                 time=time, stake=stake, owed=owed, tax=tax).invoke()
 
-    execution_info = await contract.get_stake(tokenId=2).call()
+    execution_info = await contract.get_barn(tokenId=2).call()
     print(execution_info.result)
     execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
+
+
+@pytest.mark.asyncio
+async def test_claim_wolf_from_pack():
+    print("------TESTING claim_wolf_from_pack--------")
+
+    await contract.claim_wolf_from_pack(tokenId=3, unstake=0, user=23232).invoke()
+
+    execution_info = await contract.get_pack(tokenId=3).call()
+    print(execution_info.result)
+    execution_info = await contract.get_totalAlphaStaked().call()
+    print(execution_info.result)
+    
+    await contract.claim_wolf_from_pack(tokenId=4, unstake=1, user=1212).invoke()
+
+    execution_info = await contract.get_pack(tokenId=4).call()
+    print(execution_info.result)
+    execution_info = await contract.get_totalAlphaStaked().call()
+    print(execution_info.result)
+
+    try:
+        await contract.claim_wolf_from_pack(tokenId=3, unstake=0, user=1).invoke()
+    except:
+        print('OK')
 

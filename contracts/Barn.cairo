@@ -7,6 +7,7 @@ from starkware.cairo.common.cairo_builtins import (HashBuiltin, SignatureBuiltin
 from starkware.cairo.common.signature import verify_ecdsa_signature
 from starkware.cairo.common.math import (assert_le, assert_not_zero, unsigned_div_rem, split_felt)
 from starkware.cairo.common.math_cmp import is_le_felt
+from starkware.cairo.common.serialize import serialize_word
 
 struct SheepWolf:
     member isSheep    : felt  
@@ -22,6 +23,7 @@ struct SheepWolf:
 end
 
 struct Stake:
+    member tokenId   : felt
     member value   : felt
     member owner   : felt
     member traits  : SheepWolf
@@ -53,6 +55,11 @@ end
 # stores number of wolves of each alpha
 @storage_var
 func packSize(alpha : felt) -> (len : felt):
+end
+
+# stores number of wolves of each alpha
+@storage_var
+func alpha(tokenId : felt) -> (len : felt):
 end
 
 # amount of $WOOL due for each alpha point staked
@@ -94,7 +101,7 @@ end
 #TODO constructor
 
 @view
-func get_stake{
+func get_barn{
         syscall_ptr : felt*, pedersen_ptr : HashBuiltin*,
         range_check_ptr}(tokenId : felt) -> (res : Stake):
     let (res) = barn.read(tokenId)
@@ -120,8 +127,10 @@ end
 @view
 func get_pack{
         syscall_ptr : felt*, pedersen_ptr : HashBuiltin*,
-        range_check_ptr}(alpha : felt, index : felt) -> (res : Stake):
-    let (res) = pack.read(alpha, index)
+        range_check_ptr}(tokenId : felt) -> (res : Stake):
+    let (_alpha) = alpha.read(tokenId)
+    let (index) = packIndices.read(tokenId)
+    let (res) = pack.read(_alpha, index)
     return (res)
 end
 
@@ -158,25 +167,28 @@ func register_contract{
 
     #check if contract exists already
     let (stake) = barn.read(tokenId=tokenId)
+    assert stake.tokenId = 0
     assert stake.value = 0
     assert stake.owner = 0
 
 
     #write contract
     if tokenTraits.isSheep == 1:
-        barn.write(tokenId, Stake(value=time, owner=owner, traits=tokenTraits))
+        barn.write(tokenId, Stake(tokenId=tokenId, value=time, owner=owner, traits=tokenTraits))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res + 1)
     else:
         let (wool) = woolPerAlpha.read()
         let (len) = packSize.read(tokenTraits.alphaIndex)
-        pack.write(tokenTraits.alphaIndex, len, Stake(value=wool, owner=owner, traits=tokenTraits))
+        pack.write(tokenTraits.alphaIndex, len, Stake(tokenId=tokenId, value=wool, owner=owner, traits=tokenTraits))
         packIndices.write(tokenId, len)
         packSize.write(tokenTraits.alphaIndex, len + 1)
         
         let (res) = totalAlphaStaked.read()
         totalAlphaStaked.write(res + tokenTraits.alphaIndex)
-    end                 
+
+        alpha.write(tokenId, tokenTraits.alphaIndex)
+    end
     
     return ()
 end
@@ -192,8 +204,7 @@ func claim_sheep_from_barn{
     ecdsa_ptr : SignatureBuiltin*,
     pedersen_ptr : HashBuiltin*,
     range_check_ptr}(
-    tokenId : felt,
-    staked : felt,
+    unstake : felt,
     user : felt,
     time : felt,
     stake : Stake,
@@ -204,29 +215,79 @@ func claim_sheep_from_barn{
     #TODO signature
 
     #check if sheep in barn
+    assert_not_zero(stake.tokenId)
     assert_not_zero(stake.owner)
     assert_not_zero(stake.value)
 
-    #sheep need to be in barn at least 2 days
+    # sheep need to be in barn at least 2 days
     # assert_le((time - stake.value - MINIMUM_TO_EXIT) * staked, 0)
-
-    # add owed amount to user's wallet
-    let (_userBalance) = userBalance.read(user)
-    userBalance.write(user, owed)
     
     payWolfTax(tax)
 
-    if staked == 0:
+    if unstake == 1:
         # TODODODO send mesage to L1
         
         # delete sheep from barn
-        barn.write(tokenId, Stake(value=0, owner=0, traits=SheepWolf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
+        barn.write(stake.tokenId, Stake(tokenId=0, value=0, owner=0, traits=SheepWolf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res - 1)
-
     else:
         # reset sheep's value to current timestamp
-        barn.write(tokenId, Stake(value=time, owner=stake.owner, traits=stake.traits))
+        barn.write(stake.tokenId, Stake(tokenId=stake.tokenId, value=time, owner=stake.owner, traits=stake.traits))
+    end
+
+    # add owed amount to user's wallet
+    let (_userBalance) = userBalance.read(user)
+    userBalance.write(user, _userBalance + owed)
+
+    return ()
+end
+
+# realize $WOOL earnings for a single Wolf and optionally unstake it
+# Wolves earn $WOOL proportional to their Alpha rank
+@external
+func claim_wolf_from_pack{
+    syscall_ptr : felt*,
+    ecdsa_ptr : SignatureBuiltin*,
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr}(
+    tokenId : felt,
+    unstake : felt,
+    user : felt
+    ):
+
+    # check if wolf in pack
+    let (_alpha) = alpha.read(tokenId)
+    let (index) = packIndices.read(tokenId)
+    let (stake) = pack.read(_alpha, index)
+    assert_not_zero(stake.tokenId)
+    assert_not_zero(stake.owner)
+    assert stake.owner = user
+
+    # TODO signature
+
+    # Calculate portion of tokens based on Alpha
+    let (_woolPerAlpha) = woolPerAlpha.read()
+    # add owed amount to user's wallet
+    let (_userBalance) = userBalance.read(user)
+    userBalance.write(user, _alpha * (_woolPerAlpha - stake.value))
+
+    let (len) = packSize.read(_alpha)
+    let (lastStake) = pack.read(_alpha, len)
+    if unstake == 1:
+        # Remove Alpha from total staked
+        let (_totalAlphaStaked) = totalAlphaStaked.read()
+        totalAlphaStaked.write(_totalAlphaStaked - _alpha)
+
+        # TODODODO send mesage to L1 - send wolf NFT back to user
+
+        # Shuffle last Wolf to current position
+        pack.write(_alpha, index, lastStake)
+        pack.write(_alpha, len, Stake(tokenId=0, value=0, owner=0, traits=SheepWolf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)))
+        packSize.write(_alpha, len - 1)
+        packIndices.write(lastStake.tokenId, index)
+    else:
+        pack.write(_alpha, index, Stake(tokenId=stake.tokenId, value=_woolPerAlpha, owner=stake.owner, traits=stake.traits))
     end
 
     return ()
