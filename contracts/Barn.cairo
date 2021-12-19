@@ -150,6 +150,7 @@ func get_lastClaimTimestamp{
     return (res)
 end
 
+
 #handler?
 @external
 func register_contract{
@@ -159,7 +160,7 @@ func register_contract{
     from_address : felt,
     tokenId : felt,
     tokenTraits : SheepWolf,
-    owner : felt,
+    user : felt,
     time : felt):
 
     #check from_addres
@@ -174,13 +175,13 @@ func register_contract{
 
     #write contract
     if tokenTraits.isSheep == 1:
-        barn.write(tokenId, Stake(tokenId=tokenId, value=time, owner=owner, traits=tokenTraits))
+        barn.write(tokenId, Stake(tokenId=tokenId, value=time, owner=user, traits=tokenTraits))
         let (res) = totalSheepStaked.read()
         totalSheepStaked.write(res + 1)
     else:
         let (wool) = woolPerAlpha.read()
         let (len) = packSize.read(tokenTraits.alphaIndex)
-        pack.write(tokenTraits.alphaIndex, len, Stake(tokenId=tokenId, value=wool, owner=owner, traits=tokenTraits))
+        pack.write(tokenTraits.alphaIndex, len, Stake(tokenId=tokenId, value=wool, owner=user, traits=tokenTraits))
         packIndices.write(tokenId, len)
         packSize.write(tokenTraits.alphaIndex, len + 1)
         
@@ -193,6 +194,35 @@ func register_contract{
     return ()
 end
 
+
+#handler?
+@external
+func add_many_sheep_wolves{
+    syscall_ptr : felt*,
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr}(
+    from_address : felt,
+    tokenIds_len : felt,
+    tokenIds : felt*,
+    tokenTraits_len : felt,
+    tokenTraits : felt*,
+    n : felt,
+    user : felt,
+    time : felt):
+
+    if n == 0:
+        return ()
+    end
+
+    #check from_addres
+    #assert from_address = L1_CONTRACT_ADDRESS
+
+    register_contract(from_address, tokenIds[0], SheepWolf(tokenTraits[0], tokenTraits[1], tokenTraits[2], tokenTraits[3], tokenTraits[4], tokenTraits[5], tokenTraits[6], tokenTraits[7], tokenTraits[8], tokenTraits[9]), user, time)
+
+    add_many_sheep_wolves(from_address, tokenIds_len, tokenIds + 1, tokenTraits_len, tokenTraits + 10, n - 1, user, time)
+
+    return ()
+end
 
 
 # realize $WOOL earnings for a single Sheep and optionally unstake it
@@ -243,6 +273,7 @@ func claim_sheep_from_barn{
     return ()
 end
 
+
 # realize $WOOL earnings for a single Wolf and optionally unstake it
 # Wolves earn $WOOL proportional to their Alpha rank
 @external
@@ -292,6 +323,7 @@ func claim_wolf_from_pack{
 
     return ()
 end
+
 
 # add $WOOL to claimable pot for the Pack
 func payWolfTax{

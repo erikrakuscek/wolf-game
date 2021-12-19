@@ -34,7 +34,7 @@ async def test_register_contract():
     print("------TESTING register_contract--------")
     # Register new contract
     sw = (1, 200, 100, 150, 166, 15, 10, 8, 10, 5)
-    await contract.register_contract(from_address=10101, tokenId=1, tokenTraits=sw, owner=4343, time=current_milli_time()).invoke()
+    await contract.register_contract(from_address=10101, tokenId=1, tokenTraits=sw, user=4343, time=current_milli_time()).invoke()
     # Check results.
     execution_info = await contract.get_barn(tokenId=1).call()
     print(execution_info.result)
@@ -43,7 +43,7 @@ async def test_register_contract():
     
     
     # Register new contract.
-    await contract.register_contract(from_address=122221, tokenId=2, tokenTraits=sw, owner=23232, time=current_milli_time()).invoke()
+    await contract.register_contract(from_address=122221, tokenId=2, tokenTraits=sw, user=23232, time=current_milli_time()).invoke()
     # Check results.
     execution_info = await contract.get_barn(tokenId=2).call()
     print(execution_info.result)
@@ -52,7 +52,7 @@ async def test_register_contract():
 
     # Register new contract.
     sw = (0, 200, 100, 150, 166, 15, 10, 8, 10, 5)
-    await contract.register_contract(from_address=45454, tokenId=3, tokenTraits=sw, owner=23232, time=current_milli_time()).invoke()
+    await contract.register_contract(from_address=45454, tokenId=3, tokenTraits=sw, user=23232, time=current_milli_time()).invoke()
     # Check results.
     execution_info = await contract.get_pack(tokenId=3).call()
     print(execution_info.result)
@@ -60,11 +60,30 @@ async def test_register_contract():
     print(execution_info.result)
 
     # Register new contract.
-    await contract.register_contract(from_address=1112222, tokenId=4, tokenTraits=sw, owner=1212, time=current_milli_time()).invoke()
+    await contract.register_contract(from_address=1112222, tokenId=4, tokenTraits=sw, user=1212, time=current_milli_time()).invoke()
     # Check results.
     execution_info = await contract.get_pack(tokenId=4).call()
     print(execution_info.result)
     execution_info = await contract.get_totalAlphaStaked().call()
+    print(execution_info.result)
+
+
+@pytest.mark.asyncio
+async def test_add_many_sheep_wolves():
+    print("------TESTING add_many_sheep_wolves--------")
+
+    sw1 = (1, 200, 100, 150, 166, 15, 10, 8, 10, 2)
+    sw2 = (1, 300, 200, 250, 266, 15, 10, 8, 10, 3)
+    sw3 = (1, 400, 300, 350, 366, 15, 10, 8, 10, 4)
+    await contract.add_many_sheep_wolves(from_address=10101, tokenIds=[5, 6, 7], tokenTraits=list(sw1 + sw2 + sw3), n=3, user=4343, time=current_milli_time()).invoke()
+    # Check results.
+    execution_info = await contract.get_barn(tokenId=5).call()
+    print(execution_info.result)
+    execution_info = await contract.get_barn(tokenId=6).call()
+    print(execution_info.result)
+    execution_info = await contract.get_barn(tokenId=7).call()
+    print(execution_info.result)
+    execution_info = await contract.get_totalSheepStaked().call()
     print(execution_info.result)
 
 
