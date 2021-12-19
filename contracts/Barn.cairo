@@ -7,7 +7,6 @@ from starkware.cairo.common.cairo_builtins import (HashBuiltin, SignatureBuiltin
 from starkware.cairo.common.signature import verify_ecdsa_signature
 from starkware.cairo.common.math import (assert_le, assert_not_zero, unsigned_div_rem, split_felt)
 from starkware.cairo.common.math_cmp import is_le_felt
-from starkware.cairo.common.serialize import serialize_word
 
 struct SheepWolf:
     member isSheep    : felt  
@@ -172,7 +171,6 @@ func register_contract{
     assert stake.value = 0
     assert stake.owner = 0
 
-
     #write contract
     if tokenTraits.isSheep == 1:
         barn.write(tokenId, Stake(tokenId=tokenId, value=time, owner=user, traits=tokenTraits))
@@ -218,7 +216,6 @@ func add_many_sheep_wolves{
     #assert from_address = L1_CONTRACT_ADDRESS
 
     register_contract(from_address, tokenIds[0], SheepWolf(tokenTraits[0], tokenTraits[1], tokenTraits[2], tokenTraits[3], tokenTraits[4], tokenTraits[5], tokenTraits[6], tokenTraits[7], tokenTraits[8], tokenTraits[9]), user, time)
-
     add_many_sheep_wolves(from_address, tokenIds_len, tokenIds + 1, tokenTraits_len, tokenTraits + 10, n - 1, user, time)
 
     return ()
@@ -320,6 +317,35 @@ func claim_wolf_from_pack{
     else:
         pack.write(_alpha, index, Stake(tokenId=stake.tokenId, value=_woolPerAlpha, owner=stake.owner, traits=stake.traits))
     end
+
+    return ()
+end
+
+
+@external
+func claim_many_wolves{
+    syscall_ptr : felt*,
+    ecdsa_ptr : SignatureBuiltin*,
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr}(
+    from_address : felt,
+    tokenIds_len : felt,
+    tokenIds : felt*,
+    unstakes_len : felt,
+    unstakes : felt*,
+    n : felt,
+    user : felt
+    ):
+
+    if n == 0:
+        return ()
+    end
+
+    #check from_addres
+    #assert from_address = L1_CONTRACT_ADDRESS
+
+    claim_wolf_from_pack(tokenIds[0], unstakes[0], user)
+    claim_many_wolves(from_address, tokenIds_len, tokenIds + 1, unstakes_len, unstakes + 1, n - 1, user)
 
     return ()
 end

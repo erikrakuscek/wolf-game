@@ -72,10 +72,15 @@ async def test_register_contract():
 async def test_add_many_sheep_wolves():
     print("------TESTING add_many_sheep_wolves--------")
 
-    sw1 = (1, 200, 100, 150, 166, 15, 10, 8, 10, 2)
-    sw2 = (1, 300, 200, 250, 266, 15, 10, 8, 10, 3)
-    sw3 = (1, 400, 300, 350, 366, 15, 10, 8, 10, 4)
-    await contract.add_many_sheep_wolves(from_address=10101, tokenIds=[5, 6, 7], tokenTraits=list(sw1 + sw2 + sw3), n=3, user=4343, time=current_milli_time()).invoke()
+    tokenTraits = [1, 200, 100, 150, 166, 15, 10, 8, 10, 2,
+                   1, 300, 200, 250, 266, 15, 10, 8, 10, 3,
+                   1, 400, 300, 350, 366, 15, 10, 8, 10, 4,
+                   0, 400, 300, 350, 366, 15, 10, 8, 10, 5,
+                   0, 400, 300, 350, 366, 15, 10, 8, 10, 6,
+                   0, 400, 300, 350, 366, 15, 10, 8, 10, 7]
+    tokenIds = [5, 6, 7, 8, 9, 10]
+    n = 6
+    await contract.add_many_sheep_wolves(from_address=10101, tokenIds=tokenIds, tokenTraits=tokenTraits, n=n, user=4343, time=current_milli_time()).invoke()
     # Check results.
     execution_info = await contract.get_barn(tokenId=5).call()
     print(execution_info.result)
@@ -84,6 +89,14 @@ async def test_add_many_sheep_wolves():
     execution_info = await contract.get_barn(tokenId=7).call()
     print(execution_info.result)
     execution_info = await contract.get_totalSheepStaked().call()
+    print(execution_info.result)
+    execution_info = await contract.get_pack(tokenId=8).call()
+    print(execution_info.result)
+    execution_info = await contract.get_pack(tokenId=9).call()
+    print(execution_info.result)
+    execution_info = await contract.get_pack(tokenId=10).call()
+    print(execution_info.result)
+    execution_info = await contract.get_totalAlphaStaked().call()
     print(execution_info.result)
 
 
@@ -159,3 +172,19 @@ async def test_claim_wolf_from_pack():
     except:
         print('OK')
 
+
+@pytest.mark.asyncio
+async def test_claim_many_wolves():
+    print("------TESTING claim_many_wolves--------")
+
+    await contract.claim_many_wolves(from_address=10101, tokenIds=[8, 9, 10], unstakes=[0, 1, 0], n=3, user=4343).invoke()
+
+    execution_info = await contract.get_pack(tokenId=8).call()
+    print(execution_info.result)
+    execution_info = await contract.get_pack(tokenId=9).call()
+    print(execution_info.result)
+    execution_info = await contract.get_pack(tokenId=10).call()
+    print(execution_info.result)
+    execution_info = await contract.get_totalAlphaStaked().call()
+    print(execution_info.result)
+    
